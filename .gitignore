@@ -19,6 +19,7 @@ meetings/
 
 #ignore result files
 skt-dna/
+result/
 
 #ignore venv
 venv/

@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 import numpy as np 
 
-from layers.layers import * 
+from source.layers.layers import *
 
 # graph learning layer from connecting the dots.
 class AdjConstructor(nn.Module): 
@@ -201,6 +201,114 @@ class GraphLearningEncoder(nn.Module):
         h = h.squeeze().reshape((bs, c, n, n)) # bs x c x n x n
         return h
 
+#graph learning layer using recurrent property
+class RecurrentGraphLearningEncoder(GraphLearningEncoder):
+    r""" Change GraphLearningEncoder to be recurrent.
+    # Arguments
+    ___________
+    num_heteros : int
+        the number of heterogeneous groups
+
+    # forwards
+    __________
+    returns adjacency matrix for every item in a batch
+
+    """
+
+    def __init__(self, num_heteros, time_lags, num_time_series, **kwargs):
+        super().__init__(num_heteros, time_lags, num_time_series, **kwargs)
+        '''
+        num_heteros,time_lags,tcm,node2edge_conv,edge2node_conv,node2edge_conv_2,conv_out,edge2node,node2edge
+        are already initialized in GraphLearningEncoder.
+        '''
+        self.gru =nn.GRU(input_size =num_heteros, hidden_size=num_heteros*2)
+        self.gru_fc =nn.Linear(num_heteros*2,num_heteros)
+
+    def forward(self, x, rel_rec, rel_send):
+        r"""
+        # forwards
+        __________
+        feed-forwards works as follows...
+        x : torch.FloatTensor
+            shape of x is 'bs x c x t x n'
+
+        (1) TemporalConvolutionModule
+        h :nn.Conv2d(tcm(x))
+            shape of h is 'bs x c x 1 x n'
+            reshape so that,
+            the shape of h is 'bs x c x n x 1'
+            'n' is the number of 'nodes'
+
+        (2) Node2Edge operation
+        h_e = [rel_rec @ h; rel_send @ h]
+            the shape of h_e is 'bs x c x n^2 x 2
+        h_e = conv2d(h_e)
+            the shape of h_e is 'bs x c x n^2 x 1
+        h_e_skip = h_e
+
+        (3) Edge2Node operation
+        h_n = rel_rec.t @ h_e
+            the shape of h_n is 'bs x c x n x 1'
+
+        (4)Recurrent part is added        (What's different with GraphLearningEncoder)
+        fc_input = GRU(h_n)
+            the shape of h_e is 'bs x c x 2n x 1   (detail process is in forward)
+        out = Linear(fc_input)
+            the shape of h_e is 'bs x c x n x 1   (detail process is in forward)
+
+
+        (5)Edge2Node_conv is applied
+        h_n = conv2d(out)
+            the shape of h_n is 'bs x c x n x 1'
+
+
+
+        (5) Node2Edge operation
+        h_e = [rel_rec @ h_n ; rel_send @ h_n]
+            the shape of h_e is 'bs x c x n^2 x 2'
+
+        (6) Skip connection
+        h_e = [h_e; h_e_skip]
+            the shape of h_e is 'bs x c x n^2 x 3'
+        h_e = conv2d(h_e)
+            the shape of h_e is 'bs x c x n^2 x 1'
+
+        (7) reshape the logits
+        adj = h_e.reshape(bs, c, n, n)
+        """
+        bs, c, t, n = x.shape
+        # (1)
+        h = self.tcm(x).permute(0, 1, 3, 2)  # bs, c, n, 1
+        # print(f'(1) {h.shape}')
+        # (2)
+        h = self.node2edge(h, rel_rec, rel_send)  # bs, c, n^2, 2
+        h = self.node2edge_conv(h)  # bs, c, n^2, 1
+        h_skip = h  # bs, c, n^2, 1
+        # (3)
+        h = self.edge2node(h, rel_rec, rel_send)  # bs, c, n, 1
+        # (4)
+        h = h.reshape(-1,h.size(2),h.size(3)) # bs*c, n, 1
+        recurrent_input = h.permute(0,2,1) # bs*c, 1, n
+        out, _ = self.gru(recurrent_input)
+        fc_input = out[:,-1,:].unsqueeze(1) # bs*c , 1, 2n
+        fc_out = self.gru_fc(fc_input) # bs*c , 1, n
+        fc_out = fc_out.permute(0,2,1) # bs*c , n, 1
+        fc_out = fc_out.reshape(bs,c,n,1) # bs, c, n, 1
+        h = fc_out
+        # (5)
+        h = self.edge2node_conv(h)  # bs, c, n, 1
+        # (6)
+        h = self.node2edge(h, rel_rec, rel_send)  # bs x c x n^2 x 2
+        # (7)
+        h = torch.concat((h, h_skip), dim=-1)  # bs x c x n^2 x 3
+        h = self.node2edge_conv_2(h)  # bs x c x n^2 x 1
+        h = h.squeeze().reshape((bs, c, n, n))  # bs x c x n x n
+        return h
+
+
+
+
+
 class GraphLearningEncoderModule(nn.Module): 
     r"""GraphLearningEncoderModule    
     VAE is used as a graph learning encoder.   
@@ -216,7 +324,7 @@ class GraphLearningEncoderModule(nn.Module):
         should be 10 for the skt-data     
     """
 
-    def __init__(self, num_heteros, time_lags, num_ts, device, **kwargs): 
+    def __init__(self, num_heteros, time_lags, num_ts, device,graph_type,**kwargs):
         super().__init__()
 
         # generates fully-connected-graph
@@ -227,7 +335,11 @@ class GraphLearningEncoderModule(nn.Module):
         self.rel_rec = torch.stack(rel_rec, dim= 0).to(device)
         self.rel_send = torch.stack(rel_send, dim= 0).to(device)
         
-        self.gle = GraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs) 
+        if graph_type == 'heteroNRI':
+            self.gle = GraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs)
+        elif graph_type == 'heteroNRI_gru':
+            self.gle = RecurrentGraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs)
+
         self.num_heteros, self.time_lags, self.num_ts = num_heteros, time_lags, num_ts
         # self.tau = tau
         # self.hard = hard

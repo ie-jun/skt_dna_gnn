@@ -1,9 +1,9 @@
 import torch 
 from torch import nn
 
-from layers.layers import * 
-from layers.graphLearningLayers import * 
-from layers.nriLayers import *
+from source.layers.layers import *
+from source.layers.graphLearningLayers import *
+from source.layers.nriLayers import *
 
 class MTGNN(nn.Module): 
     r"""Multivariate Time Series Forecasting with Graph Neural Networks 
@@ -280,12 +280,13 @@ class HeteroNRI(nn.Module):
                 num_blocks:int, 
                 k:int, 
                 tau:float, 
-                device, 
+                device,
+                graph_type,
                 **kwargs):
         super().__init__() 
         
         # encoder 
-        self.glem = GraphLearningEncoderModule(num_heteros, time_lags, num_ts, device)
+        self.glem = GraphLearningEncoderModule(num_heteros, time_lags, num_ts, device, graph_type)
         
         # decoder
         # projection layer

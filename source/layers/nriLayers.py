@@ -3,7 +3,7 @@ from torch.nn import functional as F
 from torch import nn 
 from torch.autograd import Variable
 
-from layers.graphLearningLayers import *
+from source.layers.graphLearningLayers import *
 
 def nri_softmax(input, axis=1):
     trans_input = input.transpose(axis, 0).contiguous()

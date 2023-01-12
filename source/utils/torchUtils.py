@@ -13,8 +13,8 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
 from matplotlib import pyplot as plt
 
-from utils.torchUtils import *
-from utils.utils import *
+from source.utils.torchUtils import *
+from source.utils.utils import *
 
 class EarlyStopping:
     r"""
@@ -318,7 +318,7 @@ def test_regr(args,
 
             for j in range(len(args.columns)):
                 col_name = args.columns[j]
-                fig.axes[j].set_title(f'time-seris plot: {col_name}')
+                fig.axes[j].set_title(f'time-series plot: {col_name}')
                 fig.axes[j].plot(preds[i,:,j], label= 'prediction')
                 fig.axes[j].plot(labels[i,:,j], label= 'label')
                 fig.axes[j].legend()

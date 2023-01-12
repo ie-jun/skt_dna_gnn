@@ -13,16 +13,25 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from utils.utils import * 
-from utils.torchUtils import *
-from layers.models import *
-from layers.ablation_models import * 
-from utils.dataloader import * 
+from source.utils.torchUtils import *
+from source.layers.models import *
+from source.layers.ablation_models import *
+from source.utils.dataloader import *
+
+#my args
+my_data_path = '../data/enb3'
+my_cache_file = '../data/cache.pickle'
+my_model_type = 'heteroNRI'
+my_test = False
+my_graph_type= 'heteroNRI_gru'  #only for heteroNRI
+my_model_path = '../result/heteroNRI_gru'
 
 parser = argparse.ArgumentParser()
+
 # Data path
 parser.add_argument('--data_type', type= str, default= 'skt', 
                     help= 'one of: skt')
-parser.add_argument('--data_path', type= str, default= './data/skt')
+parser.add_argument('--data_path', type= str, default= my_data_path)
 parser.add_argument('--tr', type= float, default= 0.7, 
                 help= 'the ratio of training data to the original data')
 parser.add_argument('--val', type= float, default= 0.2, 
@@ -33,7 +42,7 @@ parser.add_argument('--exclude_TA', action= 'store_true',
                 help= 'exclude TA column if it is set true.')
 parser.add_argument('--lag', type= int, default= 1, 
                 help= 'time-lag (default: 1)')
-parser.add_argument('--cache_file', type= str, default= './data/cache.pickle', 
+parser.add_argument('--cache_file', type= str, default= my_cache_file,
                 help= 'a cache file to min-max scale the data')
 parser.add_argument('--graph_time_range', type= int, default= 36, 
                 help= 'time-range to save a graph')
@@ -50,7 +59,7 @@ parser.add_argument('--verbose', action= 'store_true',
                     help= 'print logs about early-stopping')
 
 # model options
-parser.add_argument('--model_path', type= str, default= './data/skt/model',
+parser.add_argument('--model_path', type= str, default= my_model_path,
                     help= 'a path to (save) the model')
 parser.add_argument('--num_blocks', type= int, default= 3, 
                     help= 'the number of the HeteroBlocks (default= 3)')
@@ -77,11 +86,17 @@ parser.add_argument('--msg_out', type= int, default= 256,
 parser.add_argument('--n_hid_decoder', type= int, default= 256, 
                 help= 'dimension of a hidden vector in the nri-decoder')
 
+#graphlearning type
+parser.add_argument('--graph_type', type= str, default=my_graph_type,
+                    help= 'decide graph learning type')
+
 # To test
-parser.add_argument('--test', action='store_true', help='test')
+#parser.add_argument('--test', action='store_true', help='test')
+parser.add_argument('--test', type= bool, default= my_test
+                    ,help= 'model file', required= False)
 parser.add_argument('--model_file', type= str, default= 'latest_checkpoint.pth.tar'
                     ,help= 'model file', required= False)
-parser.add_argument('--model_type', type= str, default= 'heteroNRI', 
+parser.add_argument('--model_type', type= str, default= my_model_type,
                     help= 'one of: \'mtgnn\', \'heteroNRI\'... ')
 
 parser.add_argument('--num_folds', type= int, default= 1, 
@@ -160,7 +175,8 @@ def main(args):
             num_blocks= args.num_blocks, 
             k= args.k, 
             device= device,
-            tau= args.tau,           
+            tau= args.tau,
+            graph_type = args.graph_type
         ).to(device)
     elif args.model_type == 'heteroSpatialNRI': 
         model = HeteroSpatialNRI(

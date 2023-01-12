@@ -1,9 +1,9 @@
 import torch 
 from torch import nn
 
-from layers.layers import * 
-from layers.graphLearningLayers import * 
-from layers.nriLayers import *
+from source.layers.layers import *
+from source.layers.graphLearningLayers import *
+from source.layers.nriLayers import *
 
 class CCM(nn.Module): 
     r"""    

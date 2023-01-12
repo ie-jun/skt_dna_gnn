@@ -1,0 +1,21 @@
+#papers
+papers/
+
+#data
+data/
+!data/*.py
+
+#eda
+eda/
+
+#meeting files
+meetings/
+
+#ignore data files
+*.csv
+
+#ignore ipynb files
+*.ipynb
+
+#ignore result files
+skt-dna/

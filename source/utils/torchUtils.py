@@ -8,6 +8,7 @@ import csv
 from tqdm import tqdm 
 import networkx as nx
 
+from sklearn.preprocessing import minmax_scale
 from sklearn.metrics import r2_score
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
@@ -198,6 +199,7 @@ def test_regr(args,
     preds = [] # to store predictions
     labels = []
     graphs = [] 
+    logits = [] # to store logits
 
     criterion_mask = nn.BCELoss()
     for batch_idx, x in enumerate(test_loader):
@@ -220,6 +222,7 @@ def test_regr(args,
             # store predictions
             preds.append(out['preds'].detach().cpu()) # bs, c, 1, n
             labels.append(x['label'].detach().cpu()) # bs, c, 1, n
+            logits.append(out['logits'].detach().cpu()) #bs, c, n, n
             if out['adj_mat'] is not None: 
                 graphs.append(out['adj_mat'].detach().cpu()) # bs, c, n, n or bs, n, n
 
@@ -270,6 +273,10 @@ def test_regr(args,
         if args.cache is not None: 
             # labels = inv_min_max_scaler(labels, args.cache, args.columns)
             labels = inv_min_max_scaler_ver2(labels, args.cache, args.columns)
+
+        logits = torch.concat(logits, dim=0) # num_obs, num_cells, num_time_series, num_time_seires
+        logits = torch.permute(logits ,(1, 0, 2, 3)) # num_cells, num_obs, num_time_series, num_time_series
+        logits = logits.numpy()
         
         if len(graphs) > 0 and args.model_type != 'nri': 
             graphs = torch.concat(graphs, dim=0) # num_obs, num_cells, num_time_series, num_time_series
@@ -299,6 +306,15 @@ def test_regr(args,
         else:
             print("The path to save graphs already exists, skip making the path...")
 
+        # save logits
+        logit_path = os.path.join(args.model_path, f'test/logits')
+        if not os.path.exists(logit_path):
+            print("Making a path to save logits...")
+            print(f"{logit_path}")
+            os.makedirs(logit_path, exist_ok= True)
+        else:
+            print("The path to save logits already exists, skip making the path...")
+
         options = {
             'node_color': 'skyblue',
             'node_size': 3000,
@@ -312,8 +328,37 @@ def test_regr(args,
         for i in tqdm(range(num_cells), total= num_cells):
             enb_id = args.decoder.get(i)
             write_csv(args, 'test/predictions', f'predictions_{enb_id}.csv', preds[i, ...], args.columns)
-            write_csv(args, 'test/labels', f'labels_{enb_id}.csv', labels[i, ...], args.columns)   
-            
+            write_csv(args, 'test/labels', f'labels_{enb_id}.csv', labels[i, ...], args.columns)
+            #save logit
+            t, _ ,_ = logits[i,...].shape
+            #make logit col name
+            logit_col = []
+            for row in args.columns:
+                for col in args.columns:
+                    logit_col.append(row+'_to_'+col)
+
+            current_cell_logit = logits[i, ...].transpose(0,2,1).reshape(t,-1)#transpose and reshape logit to (t, n*n)
+
+            write_csv(args, 'test/logits', f'logits_{enb_id}.csv', current_cell_logit, logit_col)
+            #save logit l2-norm with 1 step before logit
+            logit_l2_norm = []
+            for time in range(current_cell_logit.shape[0]-1):
+                differ = current_cell_logit[time]-current_cell_logit[time+1]
+                l2_value = np.linalg.norm(differ)
+                logit_l2_norm.append(l2_value)
+
+            #normalize
+            logit_l2_norm = minmax_scale(logit_l2_norm)
+
+
+            fig, axes = plt.subplots(1,1,figsize= (10,3))
+            fig.axes[0].set_title('logit l2-norm time-series plot')
+            fig.axes[0].plot(logit_l2_norm, label='logit l2-norm')
+            fig.axes[0].legend()
+            fig.tight_layout()
+            fig_file = os.path.join(args.model_path, f'test/logits/logits_{enb_id}.png')
+            fig.savefig(fig_file)
+
             fig, axes = plt.subplots(len(args.columns), 1, figsize= (10,3*len(args.columns)))
 
             for j in range(len(args.columns)):

@@ -369,7 +369,8 @@ class HeteroNRI(nn.Module):
             'outs_label': outs_label, 
             'outs_mask': outs_mask, 
             'kl_loss': kl_loss, 
-            'adj_mat': A
+            'adj_mat': A,
+            'logits' : h
         }
 
 class HeteroNRIMulti(nn.Module): 

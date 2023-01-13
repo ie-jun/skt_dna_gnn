@@ -22,9 +22,9 @@ from source.utils.dataloader import *
 my_data_path = '../data/enb3'
 my_cache_file = '../data/cache.pickle'
 my_model_type = 'heteroNRI'
-my_test = False
-my_graph_type= 'heteroNRI_gru'  #only for heteroNRI
-my_model_path = '../result/heteroNRI_gru'
+my_test = True
+my_graph_type= 'heteroNRI'  # or heteroNRI_gru
+my_model_path = '../result/heteroNRI'
 
 parser = argparse.ArgumentParser()
 

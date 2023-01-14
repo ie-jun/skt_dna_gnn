@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils.utils import * 
+from source.utils.utils import *
 from source.utils.torchUtils import *
 from source.layers.models import *
 from source.layers.ablation_models import *
@@ -25,6 +25,7 @@ my_model_type = 'heteroNRI'
 my_test = True
 my_graph_type= 'heteroNRI'  # or heteroNRI_gru
 my_model_path = '../result/heteroNRI'
+my_lag= 7
 
 parser = argparse.ArgumentParser()
 
@@ -40,7 +41,7 @@ parser.add_argument('--standardize', action= 'store_true',
                 help= 'standardize the inputs if it is true.')
 parser.add_argument('--exclude_TA', action= 'store_true', 
                 help= 'exclude TA column if it is set true.')
-parser.add_argument('--lag', type= int, default= 1, 
+parser.add_argument('--lag', type= int, default= my_lag,
                 help= 'time-lag (default: 1)')
 parser.add_argument('--cache_file', type= str, default= my_cache_file,
                 help= 'a cache file to min-max scale the data')

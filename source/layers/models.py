@@ -190,6 +190,7 @@ class NRI(nn.Module):
                  msg_hid: int, 
                  msg_out: int, 
                  n_hid_decoder: int,
+                 pred_steps : int,
                  device,
                  **kwargs
                 ):
@@ -201,7 +202,8 @@ class NRI(nn.Module):
                                 edge_types=2,
                                 msg_hid=msg_hid,
                                 msg_out=msg_out,
-                                n_hid=n_hid_decoder)
+                                n_hid=n_hid_decoder
+                                )
         self.rel_rec, self.rel_send = generate_off_diag(num_heteros, device= device)
         
         self.num_heteros = num_heteros
@@ -209,6 +211,7 @@ class NRI(nn.Module):
         self.time_lags = time_lags 
         self.tau = tau  
         self.device= device
+        self.pred_steps = pred_steps
 
     def forward(self, x, beta= None):
         x_batch = x['input'] # bs, c, t, n
@@ -219,7 +222,7 @@ class NRI(nn.Module):
         else: 
             edges = nri_gumbel_softmax(logits, self.tau, hard= True)
         prob = nri_softmax(logits, -1)
-        output = self.decoder(x_batch, edges, self.rel_rec, self.rel_send, self.time_lags)
+        output = self.decoder(x_batch, edges, self.rel_rec, self.rel_send, self.pred_steps)
         kl_loss = kl_categorical_uniform(prob, self.num_heteros, 2)
         recon_loss = ((x_batch[:, :, 1:, :] - output[:, :, :-1, :]) ** 2).mean() 
         _, rel = logits.max(-1)
@@ -228,8 +231,8 @@ class NRI(nn.Module):
             A.append(coo_to_adj(rel[i], self.num_heteros)) # bs, c, c 
         A = torch.stack(A, dim= 0).to(self.device)
         return {
-            'preds': output[:, :, -1:, :], 
-            'outs_label': output[:, :, -1:, :], 
+            'preds': output[:, :, :, :],
+            'outs_label': output[:, :, :, :],
             'outs_mask': None, 
             'kl_loss': -kl_loss+recon_loss, 
             'adj_mat': A          

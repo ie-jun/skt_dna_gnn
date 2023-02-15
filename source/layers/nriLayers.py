@@ -231,26 +231,26 @@ class MLPDecoder(nn.Module):
 
         inputs = inputs.transpose(1, 2).contiguous()
 
-        sizes = [rel_type.size(0), inputs.size(1), rel_type.size(1),
-                 rel_type.size(2)]
-        rel_type = rel_type.unsqueeze(1).expand(sizes)
+        # sizes = [rel_type.size(0), inputs.size(1), rel_type.size(1),
+        #         rel_type.size(2)]
+        rel_type = rel_type.unsqueeze(1) #.expand(sizes)
 
-        time_steps = inputs.size(1)
-        assert (pred_steps <= time_steps)
+        # time_steps = inputs.size(1)
+        # assert (pred_steps <= time_steps)
         preds = []
 
         # initial step
-        last_pred = inputs[:, 0:1, :, :]
+        last_pred = inputs[:, -1:, :, :]
         # NOTE: Assumes rel_type is constant (i.e. same across all time steps).
-        curr_rel_type = rel_type[:, 0:1, :, :]
+        #curr_rel_type = rel_type[:, 0:1, :, :]
 
         # Run n prediction steps
         for step in range(0, pred_steps):
             last_pred = self.single_step_forward(last_pred, rel_rec, rel_send,
-                                                 curr_rel_type)
+                                                 rel_type)
             preds.append(last_pred)
 
-        sizes = [preds[0].size(0), preds[0].size(1) * pred_steps,
+        sizes = [preds[0].size(0), pred_steps,
                  preds[0].size(2), preds[0].size(3)]
 
         #output = Variable(torch.zeros(sizes))

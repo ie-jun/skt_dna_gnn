@@ -21,10 +21,13 @@ from source.utils.dataloader import *
 #my args
 my_data_path = '../data/enb3'
 my_cache_file = '../data/cache.pickle'
-my_model_type = 'heteroNRI'
-my_test = False
+my_model_type = 'nri'
+my_test = True
 my_graph_type= 'heteroNRI_gru'  #only for heteroNRI
-my_model_path = '../result/heteroNRI_gru'
+my_model_path = '../result/nri'
+my_lag = 7
+my_batchsize = 16
+my_pred_steps = 1
 
 parser = argparse.ArgumentParser()
 
@@ -40,15 +43,17 @@ parser.add_argument('--standardize', action= 'store_true',
                 help= 'standardize the inputs if it is true.')
 parser.add_argument('--exclude_TA', action= 'store_true', 
                 help= 'exclude TA column if it is set true.')
-parser.add_argument('--lag', type= int, default= 1, 
+parser.add_argument('--lag', type= int, default= my_lag,
                 help= 'time-lag (default: 1)')
 parser.add_argument('--cache_file', type= str, default= my_cache_file,
                 help= 'a cache file to min-max scale the data')
 parser.add_argument('--graph_time_range', type= int, default= 36, 
                 help= 'time-range to save a graph')
+parser.add_argument('--pred_steps', type= int, default= my_pred_steps,
+                help= 'time steps you will predict')
 
 # Training options
-parser.add_argument('--batch_size', type=int, default=32, help='input batch size')
+parser.add_argument('--batch_size', type=int, default=my_batchsize, help='input batch size')
 parser.add_argument('--epoch', type=int, default=30, help='the number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')  
 parser.add_argument('--kl_loss_penalty', type= float, default= 0.01, help= 'kl-loss penalty (default= 0.01)')
@@ -132,9 +137,9 @@ def main(args):
 
     # define training, validation, test datasets and their dataloaders respectively 
     train_data, valid_data, test_data \
-        = TimeSeriesDataset(*data['train'], lag= args.lag),\
-          TimeSeriesDataset(*data['valid'], lag= args.lag),\
-          TimeSeriesDataset(*data['test'], lag= args.lag)
+        = TimeSeriesDataset(*data['train'], lag= args.lag, pred_steps=args.pred_steps),\
+          TimeSeriesDataset(*data['valid'], lag= args.lag, pred_steps=args.pred_steps),\
+          TimeSeriesDataset(*data['test'], lag= args.lag, pred_steps=args.pred_steps)
     train_loader, valid_loader, test_loader \
         = DataLoader(train_data, batch_size = args.batch_size, shuffle = False),\
             DataLoader(valid_data, batch_size = args.batch_size, shuffle = False),\
@@ -165,7 +170,8 @@ def main(args):
             n_hid_encoder= args.n_hid_encoder,
             msg_hid = args.msg_hid,
             msg_out = args.msg_out,
-            n_hid_decoder = args.n_hid_decoder         
+            n_hid_decoder = args.n_hid_decoder,
+            pred_steps = args.pred_steps
         ).to(device)
     elif args.model_type == 'heteroNRI':
         model = HeteroNRI(

@@ -107,7 +107,7 @@ class CausalDilatedVerticalConv1d(nn.Module):
 
 class MultiVariateCausalDilatedLayer(nn.Module): 
     r"""Multivariate- Dilated Inception Layer 
-    we propese a new convolution layer named "Multivariate Causal Dilated layer" 
+    we propose a new convolution layer named "Multivariate Causal Dilated layer"
     """
     def __init__(self, in_channels:int, out_channels:int, 
                 kernel_size:tuple, 

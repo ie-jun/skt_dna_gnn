@@ -208,12 +208,12 @@ def test_regr(args,
         loss = 0
         with torch.no_grad():
             out = model(x, args.beta)
-            mse_loss = criterion(out['outs_label'], x['label'])
+            mse_loss = criterion(out['preds'], x['label'])
             if out['outs_mask'] is not None: 
                 bce_loss = criterion_mask(out['outs_mask'], x['label_mask'])
                 loss = mse_loss + bce_loss
             else: 
-                loss = mse_loss 
+                loss = mse_loss.clone()
             if out['kl_loss'] is not None: 
                 loss += args.kl_loss_penalty * out['kl_loss']
             preds_loss = criterion(out['preds'], x['label'])
@@ -258,14 +258,14 @@ def test_regr(args,
         # concatenate predictions
         print('saving the predictions...')
         preds = torch.concat(preds, dim=0) # num_obs, num_cells, num_time_series, 1 
-        preds = torch.permute(torch.squeeze(preds), (1, 0, 2)) # num_cells, num_obs, num_time_series 
+        preds = torch.permute(preds, (1, 0, 2, 3)) # num_cells, num_obs, pred_steps, num_time_series
         preds = preds.numpy()
         if args.cache is not None: 
             # preds = inv_min_max_scaler(preds, args.cache, args.columns)
             preds = inv_min_max_scaler_ver2(preds, args.cache, args.columns)
 
         labels = torch.concat(labels, dim=0) # num_obs, num_cells, num_time_series, 1
-        labels = torch.permute(torch.squeeze(labels), (1, 0, 2)) # num_cells, num_obs, num_time_series
+        labels = torch.permute(labels, (1, 0, 2, 3)) # num_cells, num_obs, pred_steps, num_time_series
         labels = labels.numpy()
         if args.cache is not None: 
             # labels = inv_min_max_scaler(labels, args.cache, args.columns)
@@ -311,21 +311,21 @@ def test_regr(args,
         idx = torch.LongTensor(np.arange(len(args.columns))).to(device)
         for i in tqdm(range(num_cells), total= num_cells):
             enb_id = args.decoder.get(i)
-            write_csv(args, 'test/predictions', f'predictions_{enb_id}.csv', preds[i, ...], args.columns)
-            write_csv(args, 'test/labels', f'labels_{enb_id}.csv', labels[i, ...], args.columns)   
+            write_csv(args, 'test/predictions', f'predictions_{enb_id}_{args.plot_step}steps.csv', preds[i, :, args.plot_step-1, ...], args.columns)
+            write_csv(args, 'test/labels', f'labels_{enb_id}_{args.plot_step}steps.csv', labels[i, :, args.plot_step-1, ...], args.columns)
             
             fig, axes = plt.subplots(len(args.columns), 1, figsize= (10,3*len(args.columns)))
 
             for j in range(len(args.columns)):
                 col_name = args.columns[j]
                 fig.axes[j].set_title(f'time-series plot: {col_name}')
-                fig.axes[j].plot(preds[i,:,j], label= 'prediction')
-                fig.axes[j].plot(labels[i,:,j], label= 'label')
+                fig.axes[j].plot(preds[i,:,args.plot_step-1,j], label= 'prediction')
+                fig.axes[j].plot(labels[i,:,args.plot_step-1,j], label= 'label')
                 fig.axes[j].legend()
 
             fig.suptitle(f"Prediction and True label plot of {enb_id}", fontsize=20, position= (0.5, 1.0+0.05))
             fig.tight_layout()
-            fig_file = os.path.join(fig_path, f'figure_{enb_id}.png')
+            fig_file = os.path.join(fig_path, f'figure_{enb_id}_{args.plot_step}steps.png')
             fig.savefig(fig_file)
 
             if args.model_type == 'mtgnn': 
@@ -366,9 +366,9 @@ def test_regr(args,
             enb_list= list(args.decoder.values())
             for j in range(args.graph_time_range):
                 plt.figure(figsize =(30,30))
-                graph_file = os.path.join(graph_path, f'graph_{j}.png')
+                graph_file = os.path.join(graph_path, f'graph_{j}_{args.plot_step}steps.png')
                 adj_mat = pd.DataFrame(graphs[j], columns = enb_list, index= enb_list)
-                adj_mat.to_csv(os.path.join(graph_path, f'graph_{j}.csv'))
+                adj_mat.to_csv(os.path.join(graph_path, f'graph_{j}_{args.plot_step}steps.csv'))
                 G = nx.from_pandas_adjacency(adj_mat)
                 G = nx.DiGraph(G)
                 pos = nx.circular_layout(G)

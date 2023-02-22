@@ -152,7 +152,7 @@ def kl_categorical_uniform(preds, num_ts, eps=1e-16):
     # if add_const:
     #     const = np.log(num_edge_types)
     #     kl_div += const
-    return -kl_div.sum() / (num_ts * preds.size(0))    
+    return -kl_div.sum() / (num_ts * preds.size(0))
 
 class NRI(nn.Module): 
     r"""
@@ -234,7 +234,7 @@ class NRI(nn.Module):
             'preds': output[:, :, :, :],
             'outs_label': output[:, :, :, :],
             'outs_mask': None, 
-            'kl_loss': -kl_loss+recon_loss, 
+            'kl_loss': kl_loss,
             'adj_mat': A          
         }
 

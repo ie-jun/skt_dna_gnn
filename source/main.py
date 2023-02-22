@@ -21,13 +21,14 @@ from source.utils.dataloader import *
 #my args
 my_data_path = '../data/enb3'
 my_cache_file = '../data/cache.pickle'
-my_model_type = 'nri'
+my_model_type = 'heteroNRI'
 my_test = True
-my_graph_type= 'heteroNRI_gru'  #only for heteroNRI
-my_model_path = '../result/nri'
+my_graph_type= 'heteroNRI'  #only for heteroNRI 혹은 heteroNRI_gru
+my_model_path = '../result/heteroNRI'
 my_lag = 7
 my_batchsize = 16
-my_pred_steps = 1
+my_pred_steps = 1 #어차피 내가 지금 multi step에 대해 모델 짤 일은 없으니 single step이나 잘 짜놓자.
+my_plot_step = 1
 
 parser = argparse.ArgumentParser()
 
@@ -64,6 +65,8 @@ parser.add_argument('--verbose', action= 'store_true',
                     help= 'print logs about early-stopping')
 
 # model options
+parser.add_argument('--plot_step', type=int, default=my_plot_step, help='plot what time step')
+
 parser.add_argument('--model_path', type= str, default= my_model_path,
                     help= 'a path to (save) the model')
 parser.add_argument('--num_blocks', type= int, default= 3, 

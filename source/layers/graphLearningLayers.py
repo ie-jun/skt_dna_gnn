@@ -306,6 +306,59 @@ class RecurrentGraphLearningEncoder(GraphLearningEncoder):
         return h
 
 
+class dotprodGraphLearningEncoder(nn.Module):
+    r""" Encoder module using TemporalConvolutionModule defined in layers.py
+    # Arguments
+    ___________
+    num_heteros : int
+        the number of heterogeneous groups
+
+    # forwards
+    __________
+    returns adjacency matrix for every item in a batch
+
+    """
+
+    def \
+            __init__(self, num_heteros, time_lags, num_time_series,n_hid_encoder =256,  **kwargs):
+        super().__init__()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.num_heteros = num_heteros
+        self.time_lags = time_lags
+
+        self.emb = nn.Linear(time_lags,n_hid_encoder)
+        self.W = torch.ones(num_time_series,num_time_series, requires_grad = True).to(device)
+
+        self.node2edge_conv = nn.Conv2d(num_heteros, num_heteros, (1, 2*n_hid_encoder), groups=num_heteros)
+        self.conv_out = nn.Conv2d(num_heteros, num_heteros, (1, time_lags))
+
+    def to_next_node(self,h):
+        bs, c, n , n_hid = h.shape
+        dotprod_h = torch.matmul(h,h.permute((0,1,3,2))) # bs, c ,n , n
+        idx = torch.tensor(range(0,n)).expand(bs,c,1,n).to(h.device)
+        dotprod_h = dotprod_h.scatter_(2,idx,0) # To make diag elements 0.
+
+        w_prod_dotprod_h = self.W * dotprod_h # broadcasting is applied automatically
+        w_prod_dotprod_h = w_prod_dotprod_h.unsqueeze(4).view(bs, c, n ,n)
+        added = w_prod_dotprod_h.unsqueeze(4) * h.unsqueeze(2) # (bs ,c, n, n ,1) * (bs, c, 1, n, n_hid) -> w_ij*<h_i,h_j>*h_i (bs ,c, n, n , n_hid)
+
+        h_next = h + added.sum(axis=3) # bs, c, n, n_hid
+        return h_next
+    def node2edge(self, x, rel_rec, rel_send):
+        # fully-connected-graph
+        receivers = torch.matmul(rel_rec, x)  # (c, n^2, n) x (bs, c, n, n_hid) --> (bs, c, n^2, n_hid)
+        senders = torch.matmul(rel_send, x)  # (c, n^2, n) x (bs, c, n, n_hid) --> (bs, c, n^2, n_hid)
+        edges = torch.cat([senders, receivers], dim=-1)  # (bs, c, n^2, 2*n_hid)
+        return edges
+
+    def forward(self, x, rel_rec, rel_send):
+        bs, c, t, n = x.shape
+
+        h = self.emb(x.permute(0,1,3,2)) # bs, c, n, n_hid
+        h_next = self.to_next_node(h) # bs, c, n, n_hid
+        edges =self.node2edge(h_next, rel_rec, rel_send) # bs, c, n^2, 2*n_hid
+        logits = self.node2edge_conv(edges).reshape(bs, c, n, n) # bs, c, n, n
+        return logits
 
 
 
@@ -339,6 +392,8 @@ class GraphLearningEncoderModule(nn.Module):
             self.gle = GraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs)
         elif graph_type == 'heteroNRI_gru':
             self.gle = RecurrentGraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs)
+        elif graph_type == 'dotprod_HeteroNRI':
+            self.gle = dotprodGraphLearningEncoder(num_heteros, time_lags, num_ts, **kwargs)
 
         self.num_heteros, self.time_lags, self.num_ts = num_heteros, time_lags, num_ts
         # self.tau = tau

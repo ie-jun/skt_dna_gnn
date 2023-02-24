@@ -223,8 +223,8 @@ class NRI(nn.Module):
             edges = nri_gumbel_softmax(logits, self.tau, hard= True)
         prob = nri_softmax(logits, -1)
         output = self.decoder(x_batch, edges, self.rel_rec, self.rel_send, self.pred_steps)
-        kl_loss = kl_categorical_uniform(prob, self.num_heteros, 2)
-        recon_loss = ((x_batch[:, :, 1:, :] - output[:, :, :-1, :]) ** 2).mean() 
+        kl_loss = kl_categorical_uniform(prob, self.num_heteros)
+        # recon_loss = ((x_batch[:, :, 1:, :] - output[:, :, :-1, :]) ** 2).mean()
         _, rel = logits.max(-1)
         A = []
         for i in range(rel.shape[0]):
@@ -237,6 +237,147 @@ class NRI(nn.Module):
             'kl_loss': kl_loss,
             'adj_mat': A          
         }
+
+
+
+class dotprod_HeteroNRI(nn.Module):
+    r"""
+
+    This work is based on the work by
+
+    \"""
+    Kipf, T., Fetaya, E., Wang, K. C., Welling, M., & Zemel, R. (2018, July).
+    Neural relational inference for interacting systems.
+    In International Conference on Machine Learning (pp. 2688-2697). PMLR.
+    \"""
+
+    It differs from NRI inthat it considers the followings
+    (1) Heterogenous properties of relational graph among objects : GroupedConvolution
+    (2) Temporal-spatial property of a time-series : Fully Connected Graph is used / CausalConvolution
+    (3) Considers Periods : Dilated convolution
+    (4) GraphResidualNet is used as a decoder block
+
+    # Arguments
+    ___________
+    num_heteros : int
+        the number of heterogeneous groups (stack along the channel dimension)
+    num_ts : int
+        the number of time-series
+        should be 10 for the skt-data
+    time_lags : int
+        the size of 'time_lags'
+    num_blocks : int
+        the number of the HeteroBlocks
+    k : int
+        the number of layers at every GC-Module
+    tau: float
+        softmax temperature - a parameter that controls the smoothness of the samples
+    kwargs : key word arguments
+        * groups
+        * drop_p
+        * ...
+    """
+
+    def __init__(self,
+                 num_heteros: int,
+                 num_ts: int,
+                 time_lags: int,
+                 num_blocks: int,
+                 k: int,
+                 tau: float,
+                 device,
+                 graph_type,
+                 **kwargs):
+        super().__init__()
+
+        # encoder
+        self.glem = GraphLearningEncoderModule(num_heteros, time_lags, num_ts, device, graph_type)
+
+        # decoder
+        # projection layer
+        self.projection = ProjectionConv1x1Layer(num_heteros, num_heteros, groups=num_heteros, **kwargs)
+        # hetero blocks
+        for i in range(num_blocks):
+            setattr(self, f'hetero_block{i}', HeteroBlock(num_heteros, k, num_ts, **kwargs))
+
+        # output_module
+        # self.fc_out = nn.Conv2d(num_heteros, num_heteros, (1, time_lags), padding= 0)
+        self.fc_decode = nn.Sequential(
+            nn.Conv2d(num_heteros * (num_blocks + 2), num_heteros, kernel_size=1, groups=num_heteros, padding=0),
+            nn.BatchNorm2d(num_heteros),
+            nn.LeakyReLU(negative_slope=0.5),
+            ResidualAdd(nn.Sequential(
+                nn.Conv2d(num_heteros, num_heteros, kernel_size=1, groups=num_heteros, padding=0),
+                nn.BatchNorm2d(num_heteros),
+                nn.LeakyReLU(negative_slope=0.5),
+                nn.Conv2d(num_heteros, num_heteros, kernel_size=1, padding=0)
+            )),
+            nn.LeakyReLU(negative_slope=0.5)
+        )
+        self.fc_out = nn.Sequential(
+            nn.Conv2d(num_heteros, num_heteros, kernel_size=(time_lags, 1), groups=num_heteros, padding=0),
+            nn.Tanh()
+        )
+
+        self.mask_block = nn.Sequential(
+            ResidualAdd(TemporalConvolutionModule(num_heteros, num_heteros, num_heteros, num_ts)),
+            nn.Conv2d(num_heteros, num_heteros, kernel_size=(time_lags, 1), groups=num_heteros)
+        )
+
+        # decoder arguments
+        self.num_heteros = num_heteros
+        self.num_ts = num_ts
+        self.time_lags = time_lags
+        self.num_blocks = num_blocks
+        self.k = k
+        # encoder arguments
+        self.tau = tau
+        # device
+        self.device = device
+
+    def forward(self, x, beta= None):
+        x_batch, mask_batch = x['input'], x['mask'] # bs, c, t, n
+
+        # encoder
+        logits = self.glem(x_batch, self.rel_rec, self.rel_send) # bs, c, n, n
+        edges = F.softmax(logits, dim=-1) # bs, c, n, n edges mean prob. and edges is used to decoder directly.
+        A = torch.argmax(edges, dim=-1)
+        A = torch.zeros_like(edges).scatter_(3, A.unsqueeze(3), 1.)
+
+        kl_loss = kl_categorical_uniform(edges, self.num_heteros)  # edges mean prob. eps = 2 is deleted.
+
+        # decoder
+        x_batch = self.projection(x_batch)
+        bs, c, t, n = x_batch.shape
+
+        outs_label = torch.zeros((bs, c * (self.num_blocks + 2), t, n)).to(
+            self.device)  # to collect outputs from modules
+        out = x_batch.clone().detach()
+        outs_label[:, ::(self.num_blocks + 2), ...] = out
+        for i in range(self.num_blocks):
+            tc_out, out = getattr(self, f'hetero_block{i}')(out, edges, beta)  #edges is used. not A
+            # x_batch += tc_out
+            outs_label[:, (i + 1)::(self.num_blocks + 2), ...] = tc_out
+            # x_batch = torch.cat([x_batch, tc_out], dim= 1)
+        # x_batch += out # bs, c, n, l
+        outs_label[:, (self.num_blocks + 1)::(self.num_blocks + 2), ...] = out
+        # x_batch = torch.cat([x_batch, out], dim=1)
+
+        # fc_out
+        outs_label = self.fc_decode(outs_label)
+        outs_label = self.fc_out(outs_label)
+
+        outs_mask = torch.sigmoid(self.mask_block(mask_batch))  # masks
+
+        return {
+            'preds': outs_label * outs_mask,
+            'outs_label': outs_label,
+            'outs_mask': outs_mask,
+            'kl_loss': kl_loss,
+            'adj_mat': A
+        }
+
+
 
 class HeteroNRI(nn.Module): 
     r"""

@@ -339,7 +339,7 @@ def test_regr(args,
                 pos = nx.circular_layout(G)
                 nx.draw_networkx(G, pos=pos, **options)
                 plt.savefig(os.path.join(graph_path, f"graph_{enb_id}.png"), format="PNG")
-            elif args.model_type == 'heteroNRI' or args.model_type == 'heteroSpatialNRI':
+            elif args.model_type == 'heteroNRI' or args.model_type == 'dotprod_HeteroNRI' or args.model_type == 'heteroSpatialNRI':
                 graph_path = os.path.join(args.model_path, f'test/graphs/{enb_id}')
                 os.makedirs(graph_path, exist_ok= True)
                 plt.figure(figsize =(15,15))

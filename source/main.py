@@ -21,10 +21,10 @@ from source.utils.dataloader import *
 #my args
 my_data_path = '../data/enb3'
 my_cache_file = '../data/cache.pickle'
-my_model_type = 'heteroNRI'
+my_model_type = 'dotprod_HeteroNRI'
 my_test = True
-my_graph_type= 'heteroNRI'  #only for heteroNRI 혹은 heteroNRI_gru
-my_model_path = '../result/heteroNRI'
+my_graph_type= 'dotprod_HeteroNRI'  #only for heteroNRI 혹은 heteroNRI_gru 혹은 dotprod_HeteroNRI
+my_model_path = '../result/dotprod_HeteroNRI'
 my_lag = 7
 my_batchsize = 16
 my_pred_steps = 1 #어차피 내가 지금 multi step에 대해 모델 짤 일은 없으니 single step이나 잘 짜놓자.
@@ -183,6 +183,17 @@ def main(args):
             time_lags= args.lag, 
             num_blocks= args.num_blocks, 
             k= args.k, 
+            device= device,
+            tau= args.tau,
+            graph_type = args.graph_type
+        ).to(device)
+    elif args.model_type == 'dotprod_HeteroNRI':
+        model = HeteroNRI(
+            num_heteros= args.num_heteros,
+            num_ts= args.num_ts,
+            time_lags= args.lag,
+            num_blocks= args.num_blocks,
+            k= args.k,
             device= device,
             tau= args.tau,
             graph_type = args.graph_type
